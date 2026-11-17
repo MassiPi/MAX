@@ -1,0 +1,120 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ELV MAX! Configuration",
+        "description": "This integration connects Home Assistant to ELV MAX! Cube.\n• Insert host address\n• Insert connection port",
+        "data": {
+          "host": "Host address",
+          "port": "Connection port"
+        }
+      },
+      "reconfigure": {
+        "title": "ELV MAX! Configuration",
+        "description": "This integration connects Home Assistant to ELV MAX! Cube.\n• Insert host address\n• Insert connection port",
+        "data": {
+          "host": "Host address",
+          "port": "Connection port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to CUBE.",
+      "unknown": "Unknown error occurred."
+    },
+
+	"issues": {
+	  "cube_unavailable": {
+		"title": "MAX! Cube unreachable",
+		"description": "Home Assistant cannot communicate with the MAX! Cube. Thermostats may become unavailable. Check the power supply, network connection, and communication with the Cube."
+	  }
+	},
+	
+    "abort": {
+      "already_configured": "Already configured",
+      "reconfigure_successful": "Reconfiguration successful"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "shutter": {
+        "name": "Window"
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "link_error": {
+        "name": "Link error"
+      }
+    },
+    "sensor": {
+      "valve": {
+        "name": "Valve Aperture"
+      },
+      "rf_address": {
+        "name": "RF Address"
+      },
+      "room": {
+        "name": "Room ID"
+      },
+      "duty_cycle": {
+        "name": "Duty Cycle"
+      },
+      "free_memory_slots": {
+        "name": "Free Memory Slots"
+      }
+    },
+    "number": {
+      "comfort_temperature": {
+        "name": "Comfort Temperature"
+      },
+      "eco_temperature": {
+        "name": "Eco Temperature"
+      },
+      "max_temperature": {
+        "name": "Max Temperature"
+      },
+      "min_temperature": {
+        "name": "Min Temperature"
+      },
+      "temperature_offset": {
+        "name": "Temperature Offset"
+      },
+      "window_open_duration": {
+        "name": "Window Open Duration"
+      },
+      "temperature_window_open": {
+        "name": "Window Open Temp"
+      },
+      "boost_value": {
+        "name": "Boost Valve Value"
+      },
+      "max_valve": {
+        "name": "Max Valve"
+      },
+      "valve_offset": {
+        "name": "Valve Offset"
+      }
+    },
+    "select": {
+      "boost_duration": {
+        "name": "Boost Duration"
+      },
+      "decalc_day": {
+        "name": "Decalcification Day",
+        "state": {
+          "saturday": "Saturday",
+          "sunday": "Sunday",
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday"
+        }
+      },
+      "decalc_time": {
+        "name": "Decalcification Time"
+      }
+    }
+  }
+}

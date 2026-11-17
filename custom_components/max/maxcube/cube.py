@@ -1,0 +1,698 @@
+import base64
+from datetime import datetime
+import json
+import logging
+import struct
+from typing import Callable
+import time
+
+from .device import (
+    MAX_CUBE,
+    MAX_DEVICE_MODE_AUTOMATIC,
+    MAX_DEVICE_MODE_MANUAL,
+    MAX_THERMOSTAT,
+    MAX_THERMOSTAT_PLUS,
+    MAX_WALL_THERMOSTAT,
+    MAX_WINDOW_SHUTTER,
+    MaxDevice,
+)
+from .room import MaxRoom
+from .thermostat import MaxThermostat
+from .wallthermostat import MaxWallThermostat
+from .windowshutter import MaxWindowShutter
+
+from .commander import Commander
+
+from homeassistant.components.climate import (
+    HVACMode,
+)
+
+logger = logging.getLogger(__name__)
+
+CMD_SET_PROG = "10"
+CMD_SET_TEMP_CFG = "11"
+UNKNOWN = "00"
+RF_FLAG_IS_ROOM = "04"
+RF_FLAG_IS_DEVICE = "00"
+RF_NULL_ADDRESS = "000000"
+DEFAULT_PORT = 62910
+DAYS = [
+    "saturday",
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
+
+
+class MaxCube(MaxDevice):
+    def __init__(
+        self,
+        host: str,
+        port: int = DEFAULT_PORT,
+        now: Callable[[], datetime] = datetime.now,
+    ):
+        super(MaxCube, self).__init__()
+        self.__commander = Commander(host, port)
+        self.name = "Cube"
+        self.type = MAX_CUBE
+        self.firmware_version = None
+        self.devices = []
+        self.rooms = []
+        self._now: Callable[[], datetime] = now
+        self.update()
+        self.log()
+
+    @property
+    def use_persistent_connection(self) -> bool:
+        return self.__commander.use_persistent_connection
+
+    @use_persistent_connection.setter
+    def use_persistent_connection(self, value: bool) -> None:
+        self.__commander.use_persistent_connection = value
+
+    def disconnect(self):
+        self.__commander.disconnect()
+
+    def __str__(self):
+        return self.describe("CUBE", f"firmware={self.firmware_version}")
+
+    def log(self):
+        logger.info(str(self))
+        for room in self.rooms:
+            logger.info(f" * ROOM {room.name}")
+            for device in self.devices_by_room(room):
+                logger.info(" --- " + str(device))
+
+    def update(self):
+        self.__parse_responses(self.__commander.update())
+
+    def update_config(self, device):
+        self.__parse_responses(self.__commander.update_config(device))
+
+    def get_devices(self):
+        return self.devices
+
+    def device_by_rf(self, rf):
+        for device in self.devices:
+            if device.rf_address == rf:
+                return device
+        return None
+
+    def devices_by_room(self, room):
+        rooms = []
+
+        for device in self.devices:
+            if device.room_id == room.id:
+                rooms.append(device)
+
+        return rooms
+
+    def get_rooms(self):
+        return self.rooms
+
+    def room_by_id(self, id):
+        for room in self.rooms:
+            if room.id == id:
+                return room
+        return None
+
+    def __parse_responses(self, messages):
+        for msg in messages:
+            try:
+                cmd = msg.cmd
+                if cmd == "C":
+                    self.parse_c_message(msg.arg)
+                elif cmd == "H":
+                    self.parse_h_message(msg.arg)
+                elif cmd == "L":
+                    self.parse_l_message(msg.arg)
+                elif cmd == "M":
+                    self.parse_m_message(msg.arg)
+                else:
+                    logger.debug("Ignored unsupported message: %s" % (msg))
+            except Exception:
+                logger.error(f"Error processing response message {msg}", exc_info=True)
+
+    def parse_c_message(self, message):
+        message = message.strip()
+
+        if not message:
+            logger.error("Empty c: message received")
+            return None
+            
+        logger.debug("Parsing c_message: " + message)
+        params = message.split(",")
+        
+        if len(params) != 2:
+            logger.error(
+                "Ignoring malformed device config: %r",
+                message
+            )
+            return None
+            
+        device_rf_address = params[0].upper()
+        data = bytearray(base64.b64decode(params[1]))
+
+        device = self.device_by_rf(device_rf_address)
+        if device and device.is_thermostat():
+            device.comfort_temperature = data[18] / 2.0
+            device.eco_temperature = data[19] / 2.0
+            device.max_temperature = data[20] / 2.0
+            device.min_temperature = data[21] / 2.0
+            device.programme = get_programme(data[29:])
+
+            device.temperature_offset = data[22] / 2.0 -3.5
+            device.temperature_window_open = data[23] / 2.0
+            device.window_open_duration = data[24] * 5
+            
+            device.boost_duration = int(self.resolve_boost_duration(data[25:26]))
+            device.boost_value = int(self.resolve_boost_value(data[25:26]))
+            
+            device.decalc_day = int(self.resolve_decalc_day(data[26:27]))
+            device.decalc_time = int(self.resolve_decalc_time(data[26:27]))
+
+            device.max_valve = int(data[27]*100/255)
+            device.valve_offset = int(data[28]*100/255)
+
+        if device and device.is_wallthermostat():
+            device.comfort_temperature = data[18] / 2.0
+            device.eco_temperature = data[19] / 2.0
+            device.max_temperature = data[20] / 2.0
+            device.min_temperature = data[21] / 2.0
+            device.programme = get_programme(data[22:204])
+            
+        if device and device.is_windowshutter():
+            # Pure Speculation based on this:
+            # Before: [17][12][162][178][4][0][20][15]KEQ0839778
+            # After:  [17][12][162][178][4][1][20][15]KEQ0839778
+            device.initialized = data[5]
+
+    def parse_h_message(self, message):
+        logger.debug("Parsing h_message: " + message)
+        tokens = message.split(",")
+        self.serial = tokens[0]
+        self.rf_address = tokens[1]
+        self.firmware_version = (tokens[2][0:2]) + "." + (tokens[2][2:4])
+        self.duty = int(tokens[5], 16)
+        self.memory = int(tokens[6], 16)
+
+    def parse_m_message(self, message):
+        logger.debug("Parsing m_message: " + message)
+        data = bytearray(base64.b64decode(message.split(",")[2]))
+        num_rooms = data[2]
+
+        pos = 3
+        for _ in range(0, num_rooms):
+            room_id = struct.unpack("bb", data[pos : pos + 2])[0]
+            name_length = struct.unpack("bb", data[pos : pos + 2])[1]
+            pos += 1 + 1
+            name = data[pos : pos + name_length].decode("utf-8")
+            pos += name_length
+            device_rf_address = self.parse_rf_address(data[pos : pos + 3])
+            pos += 3
+
+            room = self.room_by_id(room_id)
+
+            if not room:
+                room = MaxRoom()
+                room.id = room_id
+                room.name = name
+                self.rooms.append(room)
+            else:
+                room.name = name
+
+        num_devices = data[pos]
+        pos += 1
+
+        for device_idx in range(0, num_devices):
+            device_type = data[pos]
+            device_rf_address = self.parse_rf_address(data[pos + 1 : pos + 1 + 3])
+            device_serial = data[pos + 4 : pos + 14].decode("utf-8")
+            device_name_length = data[pos + 14]
+            device_name = data[pos + 15 : pos + 15 + device_name_length].decode("utf-8")
+            room_id = data[pos + 15 + device_name_length]
+
+            device = self.device_by_rf(device_rf_address)
+
+            if not device:
+                if device_type == MAX_THERMOSTAT or device_type == MAX_THERMOSTAT_PLUS:
+                    device = MaxThermostat()
+
+                if device_type == MAX_WINDOW_SHUTTER:
+                    device = MaxWindowShutter()
+
+                if device_type == MAX_WALL_THERMOSTAT:
+                    device = MaxWallThermostat()
+
+                if device:
+                    self.devices.append(device)
+
+            if device:
+                device.type = device_type
+                device.rf_address = device_rf_address
+                device.room_id = room_id
+                device.name = device_name
+                device.serial = device_serial
+
+            pos += 1 + 3 + 10 + device_name_length + 2
+
+    def parse_l_message(self, message):
+        logger.debug("Parsing l_message: " + message)
+        data = bytearray(base64.b64decode(message))
+        pos = 0
+
+        while pos < len(data):
+            length = data[pos]
+            device_rf_address = self.parse_rf_address(data[pos + 1 : pos + 4])
+
+            device = self.device_by_rf(device_rf_address)
+            bits1, bits2 = struct.unpack("BB", bytearray(data[pos + 5 : pos + 7]))
+            
+            if device:
+                bits1, bits2 = struct.unpack("BB", bytearray(data[pos + 5 : pos + 7]))
+                device.battery = self.resolve_device_battery(bits2)
+                device.link_error = self.resolve_device_link_error(bits2)
+                device.initialized = self.resolve_device_initialized(bits1)
+                device.error = self.resolve_device_error(bits1)
+                
+            # Thermostat or Wall Thermostat
+            if device and (device.is_thermostat() or device.is_wallthermostat()):
+                device.target_temperature = (data[pos + 8] & 0x7F) / 2.0
+                device.mode = self.resolve_device_mode(bits2)
+                device.panel_locked = self.resolve_device_panel_locked(bits2)
+                
+            # Thermostat
+            if device and device.is_thermostat():
+                device.valve_position = data[pos + 7]
+                if (
+                    device.mode == MAX_DEVICE_MODE_MANUAL
+                    or device.mode == MAX_DEVICE_MODE_AUTOMATIC
+                ):
+                    actual_temperature = (
+                        (data[pos + 9] & 0xFF) * 256 + (data[pos + 10] & 0xFF)
+                    ) / 10.0
+                    if actual_temperature != 0:
+                        device.actual_temperature = actual_temperature
+                else:
+                    device.actual_temperature = None
+
+            # Wall Thermostat
+            if device and device.is_wallthermostat():
+                device.actual_temperature = (
+                    ((data[pos + 8] & 0x80) << 1) + data[pos + 12]
+                ) / 10.0
+
+            # Window Shutter
+            if device and device.is_windowshutter():
+                status = data[pos + 6] & 0x03
+                if status > 0:
+                    device.is_open = True
+                else:
+                    device.is_open = False
+
+            # Advance our pointer to the next submessage
+            pos += length + 1
+
+    def set_target_temperature(self, thermostat, temperature):
+        return self.set_temperature_mode(thermostat, temperature, None)
+        
+
+    def set_mode(self, thermostat, mode):
+        return self.set_temperature_mode(thermostat, None, mode)
+
+    def set_temperature_mode(self, thermostat, temperature, mode):
+        if not thermostat.is_thermostat() and not thermostat.is_wallthermostat() and not thermostat.is_cube():
+            logger.error("%s is no (wall-)thermostat or cube!", thermostat.rf_address)
+            return
+
+        if not thermostat.is_cube():
+            if mode == HVACMode.AUTO:
+                mode = MAX_DEVICE_MODE_AUTOMATIC
+            elif mode == HVACMode.HEAT:
+                mode = MAX_DEVICE_MODE_MANUAL
+            elif mode is None:
+                mode = thermostat.mode
+                
+            if temperature is None:
+                temperature = (
+                    0
+                    if mode == MAX_DEVICE_MODE_AUTOMATIC
+                    else thermostat.target_temperature
+                )
+
+            rf_address = thermostat.rf_address
+            room = to_hex(thermostat.room_id)
+            target_temperature = int(temperature * 2) + (mode << 6)
+            byte_cmd = "000440000000" + rf_address + room + to_hex(target_temperature)
+            
+            logger.debug(
+                "Setting temperature %s and mode %s on device %s! Room %s - starting device mode %s (command: %s)",
+                temperature,
+                mode,
+                rf_address,
+                to_hex(thermostat.room_id),
+                thermostat.mode,
+                byte_cmd
+            )
+            (self.duty, status_code, self.memory) = self.__commander.send_radio_msg(byte_cmd)
+            if status_code == '0':
+                thermostat.mode = mode
+                if temperature > 0:
+                    thermostat.target_temperature = int(temperature * 2) / 2.0
+                elif mode == MAX_DEVICE_MODE_AUTOMATIC:
+                    thermostat.target_temperature = thermostat.get_programmed_temp_at(
+                        self._now()
+                    )
+                return True
+            return False
+        else:
+            if mode == HVACMode.AUTO:
+                mode = MAX_DEVICE_MODE_AUTOMATIC
+            elif mode == HVACMode.HEAT:
+                mode = MAX_DEVICE_MODE_MANUAL
+
+            if mode is None or temperature is None:
+                logger.error("Can't manage cube command without mode and temp")
+                return
+
+            rf_address = thermostat.rf_address
+            room = to_hex(0)
+            target_temperature = int(temperature * 2) + (mode << 6)       
+
+            byte_cmd = "000440000000" + rf_address + room + to_hex(target_temperature)
+
+            logger.debug(
+                "Setting temperature %s and mode %s on device %s! Room 00 - starting device mode %s (command: %s)",
+                temperature,
+                mode,
+                rf_address,
+                thermostat.mode,
+                byte_cmd
+            )
+
+            (self.duty, status_code, self.memory) = self.__commander.send_radio_msg(byte_cmd)
+            if status_code == '0':
+                thermostat.mode = mode
+                #trigger an update
+                self.update()
+                return True
+            return False
+
+    def set_programme(self, thermostat, day, metadata):
+        # compare with current programme
+        if thermostat.programme[day] == metadata:
+            logger.debug("Skipping setting unchanged programme for " + day)
+            return
+
+        heat_time_tuples = [(x["temp"], x["until"]) for x in metadata]
+        # pad heat_time_tuples so that there are always seven
+        for _ in range(7 - len(heat_time_tuples)):
+            heat_time_tuples.append((0, "00:00"))
+        command = ""
+        if thermostat.is_room():
+            rf_flag = RF_FLAG_IS_ROOM
+            devices = self.devices_by_room(thermostat)
+        else:
+            rf_flag = RF_FLAG_IS_DEVICE
+            devices = [thermostat]
+        command += UNKNOWN + rf_flag + CMD_SET_PROG + RF_NULL_ADDRESS
+        for device in devices:
+            command += device.rf_address
+            command += to_hex(device.room_id)
+            command += to_hex(n_from_day_of_week(day))
+            for heat, time in heat_time_tuples:
+                command += temp_and_time(heat, time)
+        
+        logger.error(command)
+        (self.duty, status_code, self.memory) = self.__commander.send_radio_msg(command)
+        if status_code == '0':
+            return True
+        else:
+            return False
+
+    def devices_as_json(self):
+        devices = []
+        for device in self.devices:
+            devices.append(device.to_dict())
+        return json.dumps(devices, indent=2)
+
+    def set_programmes_from_config(self, config_file):
+        config = json.load(config_file)
+        for device_config in config:
+            device = self.device_by_rf(device_config["rf_address"])
+            programme = device_config["programme"]
+            if not programme:
+                # e.g. a wall thermostat
+                continue
+            for day, metadata in programme.items():
+                self.set_programme(device, day, metadata)
+
+    @classmethod
+    def resolve_device_mode(cls, bits):
+        return bits & 3
+
+    @classmethod
+    def resolve_device_panel_locked(cls, bits):
+        return 1 if bits & 0b00100000 else 0
+
+    @classmethod
+    def resolve_device_link_error(cls, bits):
+        return 1 if bits & 0b01000000 else 0
+
+    @classmethod
+    def resolve_device_battery(cls, bits):
+        return bits >> 7
+
+    @classmethod
+    def resolve_device_initialized(cls, bits):
+        return 1 if bits & 0b00000010 else 0
+
+    @classmethod
+    def resolve_device_error(cls, bits):
+        return 1 if bits & 0b00001000 else 0
+
+    @classmethod
+    def parse_rf_address(cls, address):
+        return "".join("{:02X}".format(x) for x in address)
+
+    def send_raw_command(self, cmd: str, arg: str = "") -> str:
+        return str(self.__commander.send_raw_msg(cmd, arg))
+        
+    #@classmethod
+    #def resolve_boost_duration(cls, bits):
+    #    bits = struct.unpack("B", bytearray(bits))
+    #    return int((bits[0] & 0b11100000) >> 5)*5
+    @classmethod
+    def resolve_boost_duration(cls, bits):
+        bits = struct.unpack("B", bytearray(bits))
+        duration = (bits[0] & 0b11100000) >> 5
+        return 60 if duration == 7 else duration * 5
+    
+    @classmethod
+    def resolve_boost_value(cls, bits):
+        bits = struct.unpack("B", bytearray(bits))
+        return int((bits[0] & 0b00011111))*5
+    @classmethod
+    def resolve_decalc_day(cls, bits):
+        bits = struct.unpack("B", bytearray(bits))
+        return int((bits[0] & 0b11100000) >> 5)
+    @classmethod
+    def resolve_decalc_time(cls, bits):
+        bits = struct.unpack("B", bytearray(bits))
+        return int((bits[0] & 0b00011111))
+
+    @classmethod
+    def encode_boost(cls, duration, value):
+        duration_map = {
+            0: 0,
+            5: 1,
+            10: 2,
+            15: 3,
+            20: 4,
+            25: 5,
+            30: 6,
+            60: 7,
+        }
+
+        if duration not in duration_map:
+            raise ValueError(f"Invalid boost duration: {duration}")
+
+        if not 0 <= value <= 100 or value % 5 != 0:
+            raise ValueError(f"Invalid boost value: {value}")
+
+        bits = (duration_map[duration] << 5) | int(value // 5)
+        return struct.pack("B", bits).hex()
+
+
+    @classmethod
+    def encode_decalc(cls, day, time):
+        if not 0 <= day <= 6:
+            raise ValueError(f"Invalid decalc day: {day}")
+
+        if not 0 <= time <= 23:
+            raise ValueError(f"Invalid decalc time: {time}")
+
+        bits = (day << 5) | time
+        return struct.pack("B", bits).hex()
+        
+    #config section
+    def set_temp_config(self, thermostat, comfortTemp, ecoTemp, maxTemp, minTemp, offsetTemp, windowTemp, windowDuration):
+        if not thermostat.is_thermostat() and not thermostat.is_wallthermostat():
+            logger.error("%s is no (wall-)thermostat!", thermostat.rf_address)
+            return
+
+        # Controllo dei valori numerici
+        temperatures = {
+            "comfortTemp": comfortTemp,
+            "ecoTemp": ecoTemp,
+            "maxTemp": maxTemp,
+            "minTemp": minTemp,
+            "offsetTemp": offsetTemp,
+            "windowTemp": windowTemp
+        }
+
+
+        for name, value in temperatures.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name}: valore non numerico ({value})")
+
+            if not -0 <= value <= 40:
+                raise ValueError(
+                    f"{name}: temperatura fuori intervallo ({value} °C)"
+                )
+                
+            if not value % 0.5 == 0:
+                raise ValueError(f"{name}: valore approssimato a 0.5 ({value})")
+
+
+        rf_address = thermostat.rf_address
+        room = to_hex(thermostat.room_id) 
+
+        byte_cmd = "0000" + CMD_SET_TEMP_CFG + "000000" + rf_address + room + to_hex(int(comfortTemp*2)) + to_hex(int(ecoTemp*2)) + to_hex(int(maxTemp*2)) + to_hex(int(minTemp*2)) + to_hex(int((offsetTemp + 3.5)*2)) + to_hex(int(windowTemp*2)) + to_hex(int(windowDuration//5))
+
+        logger.debug(
+            "Setting comfort temp config (%s), eco temp config (%s), max temp config (%s), min temp config (%s), offset temp config (%s), window open temp config (%s), window open duration config (%s) on device %s Room %s (command: %s)",
+            comfortTemp,
+            ecoTemp,
+            maxTemp,
+            minTemp,
+            offsetTemp,
+            windowTemp,
+            windowDuration,
+            rf_address,
+            thermostat.room_id,
+            byte_cmd
+        )
+
+        (self.duty, status_code, self.memory) = self.__commander.send_radio_msg(byte_cmd)
+        logger.debug(
+            "Result: duty %s status %s memory %s",
+            self.duty, status_code, self.memory
+        )
+        
+        if status_code == '0':
+            return True
+        else:
+            return False
+
+    def set_valve_config(self, thermostat, boostValve, boostDuration, maxValve, valveOffset, decalcDay, decalcTime):
+        if not thermostat.is_thermostat():
+            logger.error("%s is no thermostat!", thermostat.rf_address)
+            return
+
+        # Controllo dei valori numerici
+        values = {
+            "boostValve": boostValve,
+            "boostDuration": boostDuration,
+            "maxValve": maxValve,
+            "valveOffset": valveOffset,
+            "decalcDay": decalcDay,
+            "decalcTime": decalcTime
+        }
+
+
+        for name, value in values.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name}: valore non numerico ({value})")
+
+        rf_address = thermostat.rf_address
+        room = to_hex(thermostat.room_id) 
+
+        byte_cmd = "000412000000" + rf_address + room + self.encode_boost(boostDuration, boostValve) + self.encode_decalc(decalcDay,decalcTime)+to_hex(int(maxValve * 255 / 100))+to_hex(int(valveOffset * 255 / 100))
+
+        logger.debug(
+            "Setting boost valve config (%s), boost duration config (%s), max valve config (%s), valve offset config (%s), decalc day config (%s), decalc time config (%s) on device %s Room %s (command: %s)",
+            boostValve,
+            boostDuration,
+            maxValve,
+            valveOffset,
+            decalcDay,
+            decalcTime,
+            rf_address,
+            thermostat.room_id,
+            byte_cmd
+        )
+
+        (self.duty, status_code, self.memory) = self.__commander.send_radio_msg(byte_cmd)
+        logger.debug(
+            "Result: duty %s status %s memory %s",
+            self.duty, status_code, self.memory
+        )
+        
+        if status_code == '0':
+            return True
+        else:
+            return False
+
+def get_programme(bits):
+    n = 26
+    programme = {}
+    days = [bits[i : i + n] for i in range(0, len(bits), n)]
+    for j, day in enumerate(days):
+        n = 2
+        settings = [day[i : i + n] for i in range(0, len(day), n)]
+        day_programme = []
+        for setting in settings:
+            word = format(setting[0], "08b") + format(setting[1], "08b")
+            temp = float(int(word[:7], 2) / 2)
+            time_mins = int(word[7:], 2) * 5
+            mins = time_mins % 60
+            hours = int((time_mins - mins) / 60)
+            time = "{:02d}:{:02d}".format(hours, mins)
+            day_programme.append({"temp": temp, "until": time})
+            if time == "24:00":
+                # This appears to flag the end of usable set points
+                break
+        programme[day_of_week_from_n(j)] = day_programme
+    return programme
+
+
+def n_from_day_of_week(day):
+    return DAYS.index(day)
+
+
+def day_of_week_from_n(day):
+    return DAYS[day]
+
+
+def temp_and_time(temp, time):
+    temp = float(temp)
+    assert temp <= 32, "Temp must be 32 or lower"
+    assert temp % 0.5 == 0, "Temp must be increments of 0.5"
+    temp = int(temp * 2)
+    hours, mins = [int(x) for x in time.split(":")]
+    assert mins % 5 == 0, "Time must be a multiple of 5 mins"
+    mins = hours * 60 + mins
+    bits = format(temp, "07b") + format(int(mins / 5), "09b")
+    return to_hex(int(bits, 2))
+
+
+def to_hex(value):
+    "Return value as hex word"
+    return format(value, "02X")
+

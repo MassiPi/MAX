@@ -1,0 +1,120 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurazione ELV MAX!",
+        "description": "Questa integrazione collega Home Assistant a ELV MAX! Cube.\n• Inserisci l'indirizzo del Cube\n• Inserisci la porta di connessione",
+        "data": {
+          "host": "Indirizzo Cube",
+          "port": "Porta di connessione"
+        }
+      },
+      "reconfigure": {
+        "title": "Configurazione ELV MAX!",
+        "description": "Questa integrazione collega Home Assistant a ELV MAX! Cube.\n• Inserisci l'indirizzo del Cube\n• Inserisci la porta di connessione",
+        "data": {
+          "host": "Indirizzo Cube",
+          "port": "Porta di connessione"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi a CUBE.",
+      "unknown": "Errore sconosciuto."
+    },
+
+	"issues": {
+	  "cube_unavailable": {
+		"title": "MAX! Cube non raggiungibile",
+		"description": "Home Assistant non riesce a comunicare con il MAX! Cube. I termostati potrebbero risultare non disponibili. Controlla l'alimentazione, la connessione di rete e la comunicazione con il Cube."
+	  }
+	},
+	
+    "abort": {
+      "already_configured": "Già configurato",
+      "reconfigure_successful": "Riconfigurato correttamente"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "shutter": {
+        "name": "Finestra"
+      },
+      "battery": {
+        "name": "Batteria"
+      },
+      "link_error": {
+        "name": "Collegamento"
+      }
+    },
+    "sensor": {
+      "valve": {
+        "name": "Apertura Valvola"
+      },
+      "rf_address": {
+        "name": "Indirizzo RF"
+      },
+      "room": {
+        "name": "ID Stanza"
+      },
+      "duty_cycle": {
+        "name": "Duty Cycle"
+      },
+      "free_memory_slots": {
+        "name": "Slot memoria liberi"
+      }
+    },
+    "number": {
+      "comfort_temperature": {
+        "name": "Temperatura comfort"
+      },
+      "eco_temperature": {
+        "name": "Temperatura eco"
+      },
+      "max_temperature": {
+        "name": "Temperatura massima"
+      },
+      "min_temperature": {
+        "name": "Temperatura minima"
+      },
+      "temperature_offset": {
+        "name": "Correzione temperatura"
+      },
+      "window_open_duration": {
+        "name": "Durata apertura finestra"
+      },
+      "temperature_window_open": {
+        "name": "Temperatura finestra aperta"
+      },
+      "boost_value": {
+        "name": "Posizione valvola boost"
+      },
+      "max_valve": {
+        "name": "Posizione massima valvola"
+      },
+      "valve_offset": {
+        "name": "Correzione valvola"
+      }
+    },
+    "select": {
+      "boost_duration": {
+        "name": "Durata boost"
+      },
+      "decalc_day": {
+        "name": "Giorno anticalcare",
+        "state": {
+          "saturday": "Sabato",
+          "sunday": "Domenica",
+          "monday": "Lunedì",
+          "tuesday": "Martedì",
+          "wednesday": "Mercoledì",
+          "thursday": "Giovedì",
+          "friday": "Venerdì"
+        }
+      },
+      "decalc_time": {
+        "name": "Ora anticalcare"
+      }
+    }
+  }
+}

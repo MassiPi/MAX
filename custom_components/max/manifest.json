@@ -1,0 +1,12 @@
+{
+  "domain": "max",
+  "name": "ELV Max! Integration",
+  "codeowners": ["MassiPI"],
+  "config_flow": true,
+  "documentation": "",
+  "issue_tracker": "",
+  "iot_class": "local_polling",
+  "version": "1.0.0",
+  "requirements": [],
+  "dependencies": ["http", "frontend"]
+}

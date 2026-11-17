@@ -1,0 +1,35 @@
+get_program:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: max
+          domain: climate
+
+set_program:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: max
+          domain: climate
+    program:
+      required: true
+      selector:
+        object:
+        
+cube_send_command:
+  fields:
+    entry_id:
+      selector:
+        config_entry:
+          integration: max
+    command:
+      required: true
+      selector:
+        text:
+    argument:
+      selector:
+        text:
