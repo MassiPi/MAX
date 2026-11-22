@@ -85,21 +85,21 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class MaxDeviceClimate(CoordinatorEntity, ClimateEntity):
     """MAX! Device ClimateEntity."""
     _attr_icon = "mdi:thermostat"
-    _unrecorded_attributes = frozenset({
-        ATTR_WINDOW_OPEN_TEMP,
-        ATTR_TEMPERATURE_OFFSET,
-        ATTR_WINDOW_OPEN_DURATION,
-        ATTR_BOOST_VALUE,
-        ATTR_BOOST_DURATION,
-        ATTR_DECALC_DAY,
-        ATTR_DECALC_TIME,
-        ATTR_MAX_VALVE,
-        ATTR_VALVE_OFFSET,
-        ATTR_COMFORT_TEMP,
-        ATTR_ECO_TEMP,
-        #ATTR_ROOM,
-        #ATTR_DEVICE_RF_ADDRESS,
-    })
+    #_unrecorded_attributes = frozenset({
+    #    ATTR_WINDOW_OPEN_TEMP,
+    #    ATTR_TEMPERATURE_OFFSET,
+    #    ATTR_WINDOW_OPEN_DURATION,
+    #    ATTR_BOOST_VALUE,
+    #    ATTR_BOOST_DURATION,
+    #    ATTR_DECALC_DAY,
+    #    ATTR_DECALC_TIME,
+    #    ATTR_MAX_VALVE,
+    #    ATTR_VALVE_OFFSET,
+    #    ATTR_COMFORT_TEMP,
+    #    ATTR_ECO_TEMP,
+    #    #ATTR_ROOM,
+    #    #ATTR_DEVICE_RF_ADDRESS,
+    #})
 
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO, HVACMode.HEAT]
     _attr_supported_features = (
@@ -228,7 +228,7 @@ class MaxDeviceClimate(CoordinatorEntity, ClimateEntity):
         return HVACAction.OFF if self.hvac_mode == HVACMode.OFF else HVACAction.IDLE
 
     @property
-    def native_current_temperature(self):
+    def native_target_temperature(self):
         """Return the temperature we try to reach."""
         temp = self._device.target_temperature
         if temp is None or temp < self.min_temp or temp > self.max_temp:
@@ -278,44 +278,44 @@ class MaxDeviceClimate(CoordinatorEntity, ClimateEntity):
         else:
             raise ValueError(f"unsupported preset mode {preset_mode}")
 
-    @property
-    def extra_state_attributes(self):
-        """Return the optional state attributes."""
-        if self._device.is_thermostat():
-            return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
-                    ATTR_TEMPERATURE_OFFSET: self._device.temperature_offset,
-                    ATTR_WINDOW_OPEN_DURATION: self._device.window_open_duration,
-                    ATTR_BOOST_VALUE: self._device.boost_value,
-                    ATTR_BOOST_DURATION: self._device.boost_duration,
-                    ATTR_DECALC_DAY: self._device.decalc_day,
-                    ATTR_DECALC_TIME: self._device.decalc_time,
-                    ATTR_MAX_VALVE: self._device.max_valve,
-                    ATTR_VALVE_OFFSET: self._device.valve_offset,
-                    ATTR_COMFORT_TEMP: self._device.comfort_temperature,
-                    ATTR_ECO_TEMP: self._device.eco_temperature,
-                    #ATTR_ROOM: self._attr_room,
-                    #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
-                    }
-        
-        elif self._device.is_wallthermostat():
-            return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
-                    ATTR_COMFORT_TEMP: self._device.comfort_temperature,
-                    ATTR_ECO_TEMP: self._device.eco_temperature,
-                    #ATTR_ROOM: self._attr_room,
-                    #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
-                    }        
-        else:
-            return {}
+    #@property
+    #def extra_state_attributes(self):
+    #    """Return the optional state attributes."""
+    #    if self._device.is_thermostat():
+    #        return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
+    #                ATTR_TEMPERATURE_OFFSET: self._device.temperature_offset,
+    #                ATTR_WINDOW_OPEN_DURATION: self._device.window_open_duration,
+    #                ATTR_BOOST_VALUE: self._device.boost_value,
+    #                ATTR_BOOST_DURATION: self._device.boost_duration,
+    #                ATTR_DECALC_DAY: self._device.decalc_day,
+    #                ATTR_DECALC_TIME: self._device.decalc_time,
+    #                ATTR_MAX_VALVE: self._device.max_valve,
+    #                ATTR_VALVE_OFFSET: self._device.valve_offset,
+    #                ATTR_COMFORT_TEMP: self._device.comfort_temperature,
+    #                ATTR_ECO_TEMP: self._device.eco_temperature,
+    #                #ATTR_ROOM: self._attr_room,
+    #                #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
+    #                }
+    #    
+    #    elif self._device.is_wallthermostat():
+    #        return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
+    #                ATTR_COMFORT_TEMP: self._device.comfort_temperature,
+    #                ATTR_ECO_TEMP: self._device.eco_temperature,
+    #                #ATTR_ROOM: self._attr_room,
+    #                #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
+    #                }        
+    #    else:
+    #        return {}
        
 class MaxCubeClimate(CoordinatorEntity, ClimateEntity):
     """MAX! Device ClimateEntity."""
     _attr_icon = "mdi:thermostat"
-    _unrecorded_attributes = frozenset({
-        ATTR_WINDOW_OPEN_TEMP,
-        ATTR_COMFORT_TEMP,
-        ATTR_ECO_TEMP,
-        #ATTR_DEVICE_RF_ADDRESS,
-    })
+    #_unrecorded_attributes = frozenset({
+    #    ATTR_WINDOW_OPEN_TEMP,
+    #    ATTR_COMFORT_TEMP,
+    #    ATTR_ECO_TEMP,
+    #    #ATTR_DEVICE_RF_ADDRESS,
+    #})
 
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO, HVACMode.HEAT]
     _attr_supported_features = (
@@ -430,7 +430,7 @@ class MaxCubeClimate(CoordinatorEntity, ClimateEntity):
         )
 
     @property
-    def native_current_temperature(self):
+    def native_target_temperature(self):
         """Return the temperature we try to reach."""
         temp = self._device.target_temperature
         if temp is None or temp < self.min_temp or temp > self.max_temp:
@@ -486,14 +486,14 @@ class MaxCubeClimate(CoordinatorEntity, ClimateEntity):
         else:
             raise ValueError(f"unsupported preset mode {preset_mode}")
 
-    @property
-    def extra_state_attributes(self):
-        """Return the optional state attributes."""
-        return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
-                ATTR_COMFORT_TEMP: self._device.comfort_temperature,
-                ATTR_ECO_TEMP: self._device.eco_temperature,
-                #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
-                }
+    #@property
+    #def extra_state_attributes(self):
+    #    """Return the optional state attributes."""
+    #    return {ATTR_WINDOW_OPEN_TEMP: self._device.temperature_window_open,
+    #            ATTR_COMFORT_TEMP: self._device.comfort_temperature,
+    #            ATTR_ECO_TEMP: self._device.eco_temperature,
+    #            #ATTR_DEVICE_RF_ADDRESS: self._device.rf_address
+    #            }
        
     def update(self) -> None:
         """Get latest data from MAX! Cube."""
